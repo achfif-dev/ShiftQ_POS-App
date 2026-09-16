@@ -25,9 +25,12 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/), versioning men
 - **Sistem Lisensi Anti-Bajakan** (self-service): aktivasi lewat kode lisensi yang ditempel
   sendiri oleh pelanggan (tanpa bantuan developer), diverifikasi via tanda tangan RSA-2048 —
   private key hanya ada di Cloud Functions, tidak pernah ikut ke dalam APK. Sekali aktivasi
-  online, aplikasi tetap 100% bisa dipakai offline (revalidasi otomatis diam-diam tiap ada
-  internet lewat WorkManager, masa tenggang 14 hari sebelum benar-benar terkunci). Developer
-  cukup build SATU APK generik untuk semua pelanggan — lihat `LICENSING_SETUP.md`.
+  online, aplikasi tetap 100% bisa dipakai offline SELAMANYA (lisensi sekali bayar, BUKAN
+  langganan — tidak ada tanggal kedaluwarsa atau token yang perlu diperpanjang sama sekali).
+  Revalidasi opsional & oportunistik tiap ada internet lewat WorkManager HANYA untuk mendeteksi
+  penonaktifan oleh penjual (refund/bajakan), bukan untuk memperpanjang apa pun — device yang
+  tidak pernah online lagi tetap aktif selamanya. Developer cukup build SATU APK generik untuk
+  semua pelanggan — lihat `LICENSING_SETUP.md`.
 - **Payment Gateway QRIS Otomatis (Midtrans)**: setiap toko menghubungkan akun Midtrans sendiri
   (uang masuk langsung ke rekening toko, bukan lewat developer) lewat Pengaturan > Payment
   Gateway — sepenuhnya self-service. Status "Lunas" terkonfirmasi otomatis realtime di layar

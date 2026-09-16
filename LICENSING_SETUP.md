@@ -92,13 +92,21 @@ field `devices`, kalau perlu melepas device tertentu.)
 
 ## Cara kerja singkat (untuk konteks debugging)
 
-- Aktivasi PERTAMA wajib online (device memanggil Cloud Function, dapat token yang ditandatangani
-  RSA, valid 30 hari).
-- Setelahnya app **100% bisa offline** — status dihitung lokal dari token tersimpan.
-- `LicenseSyncWorker` mencoba memperpanjang token diam-diam tiap ada internet (setiap 12 jam
-  dicek, hanya benar-benar mengirim request kalau ada koneksi).
-- Kalau device offline lebih dari 30+14 hari berturut-turut tanpa berhasil online sekali pun,
-  aplikasi minta koneksi internet untuk revalidasi ulang (bukan minta beli lisensi baru).
+- Aktivasi PERTAMA wajib online (device memanggil Cloud Function `activateLicense`, dapat
+  sertifikat yang ditandatangani RSA-2048 — lihat `LicenseCrypto.kt`).
+- Setelahnya app **100% bisa offline SELAMANYA** — status dihitung lokal dari sertifikat
+  tersimpan. Lisensi ini SEKALI BAYAR (bukan langganan): sertifikat TIDAK PERNAH kedaluwarsa
+  berdasarkan waktu, tidak ada token yang perlu "diperpanjang" (lihat bagian "Model Lisensi" di
+  `README.md`).
+- `LicenseSyncWorker` sesekali memanggil `checkLicenseStatus` SECARA OPORTUNISTIK tiap ada
+  internet (setiap 12 jam dicek) — BUKAN untuk memperpanjang apa pun, HANYA untuk mendeteksi
+  kalau penjual menonaktifkan lisensi ini (refund/chargeback/bajakan). Gagal (offline dsb.)
+  TIDAK PERNAH mengunci apa pun — fail-open.
+- Kalau device tidak pernah online lagi setelah aktivasi, lisensi TETAP AKTIF selamanya di
+  device itu — trade-off yang sengaja diambil demi filosofi offline-first app ini. TIDAK ADA
+  batas hari offline yang memaksa revalidasi (versi dokumen ini sebelumnya menyebut "30+14
+  hari" dari desain langganan lama yang sudah tidak dipakai lagi — lihat riwayat bug di
+  `README.md`).
 
 ## Build APK generik (tanpa perlu build khusus per pelanggan)
 
