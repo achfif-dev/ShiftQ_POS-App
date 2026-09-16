@@ -1,4 +1,4 @@
-# Kasir POS (Full Offline-First + Hybrid Online) — Android Kotlin + Jetpack Compose
+# ShiftQ — Kasir POS (Full Offline-First + Hybrid Online) — Android Kotlin + Jetpack Compose
 
 Aplikasi kasir offline-first, Clean Architecture, siap di-build otomatis lewat GitHub Actions
 tanpa perlu PC lokal maupun terminal — semua langkah (build APK, generate keystore, generate
@@ -75,6 +75,36 @@ tertanam di backend (`functions/index.js`, fungsi `activateLicense`) maupun clie
   Ini/Bulan Ini, ringkasan omzet & laba kotor, daftar produk terlaris.
 - **Stok & Inventaris** — `presentation/stock/StockScreen.kt`: stok masuk/keluar/opname
   dengan riwayat, filter stok tipis.
+- **Manajemen Shift Kasir** — buka/tutup kasir dengan rekonsiliasi kas otomatis (kas seharusnya
+  dihitung sistem dari transaksi tunai asli, bukan input manual). Saat "Wajibkan Login PIN"
+  aktif, transaksi digerbang: harus ada shift terbuka dulu.
+- **Pelanggan & Piutang (Bon)** — metode pembayaran `BON` (bisa split dengan Cash/QRIS/Debit),
+  saldo piutang dihitung otomatis dari transaksi Bon dikurangi pelunasan (boleh mencicil).
+- **Retur/Refund & Void Transaksi** — Retur boleh diproses Kasir maupun Admin (alasan wajib,
+  per-item bisa ditandai layak jual lagi/rusak). Void (batalkan transaksi sepenuhnya) khusus
+  Admin — transaksi tetap tersimpan berstatus `VOIDED` untuk audit, dikeluarkan dari Laporan.
+- **Role Manager** — peran ketiga di antara Kasir dan Admin: bisa jual & retur seperti Kasir,
+  plus akses Beban Usaha & Laba Bersih di Laporan, tapi tetap tidak bisa Void/Koreksi transaksi
+  maupun akses Pengaturan/Backup/Manajemen Pengguna (murni Admin-only).
+- **Log Aktivitas** — mencatat Void, Retur, Koreksi Transaksi, Diskon Manual (nominal+kasir),
+  Import Produk Massal, Tambah/Hapus Pengguna, dan Restore Backup (siapa, kapan, alasan).
+- **Batas Diskon Manual Kasir** (`domain/usecase/DiscountPolicy.kt`) — diskon manual per-item/
+  transaksi yang diberikan Kasir otomatis dipangkas ke `StoreProfile.maxKasirDiscountPercent`
+  (diatur Admin, default 20%); Admin/Manager tidak dibatasi. Anti-fraud "sweethearting" klasik
+  POS — setiap diskon manual >0 tercatat ke Log Aktivitas.
+- **Promo/Diskon Otomatis** (`domain/usecase/PromoEngine.kt`) — 3 tipe: persen per kategori,
+  beli X gratis Y, dan persen dari minimal belanja transaksi. Diterapkan otomatis ke keranjang
+  begitu syarat terpenuhi, kasir langsung lihat potongannya sebelum bayar.
+- **Pesanan Tertahan (Parked Sales)** — kasir bisa "menahan" keranjang yang belum selesai
+  (pelanggan masih memilih/mencari uang) untuk melayani pelanggan lain dulu, lalu melanjutkan
+  kembali kapan saja — harga/stok di-lookup ulang ke data terbaru saat dilanjutkan.
+- **Import Produk Massal dari Excel/CSV** (`ProductImportScreen`, `ProductImportUseCase`) —
+  pratinjau hasil parsing dulu sebelum konfirmasi tulis ke database, pencocokan by SKU (SKU ada
+  → update, SKU baru → insert), transaksional, tercatat ke Log Aktivitas.
+- **Sinkronisasi Cloud & Multi-Cabang** (opsional, lihat `FIREBASE_SETUP.md`) — ringkasan omzet
+  harian & katalog stok/harga read-only lintas cabang, terisolasi per `licenseKey` lewat custom
+  claim `customerGroupId` (satu proyek Firebase dipakai bersama semua pelanggan, satu APK
+  generik — lihat bagian setup terkait).
 - **`.github/workflows/android_build.yml`** — build otomatis: lint → unit test → APK debug
   & release ter-upload sebagai Build Artifact.
 
@@ -135,14 +165,15 @@ Alur paling dasar untuk sekadar build & install APK:
   developer menjalankan `LICENSING_SETUP.md`. Jangan lupa langkah ini atau semua pelanggan
   tidak akan bisa aktivasi.
 - **QRIS Otomatis — keterbatasan yang perlu diketahui**: order ID yang dikirim ke Midtrans saat
-  checkout (`QrisAutoPaymentViewModel`) adalah ID sementara (`TEMP-<timestamp>`), dibuat SEBELUM
-  transaksi final tersimpan ke database (nomor invoice baru dibuat setelah checkout selesai).
-  Artinya saat ini belum ada kolom yang menyimpan tautan `order_id Midtrans <-> invoiceNumber`
-  di `TransactionEntity` untuk rekonsiliasi laporan keuangan lintas sistem. Cukup aman untuk
-  konfirmasi status "Lunas" real-time di kasir (yang sudah berfungsi penuh), tapi kalau butuh
-  rekonsiliasi akuntansi formal ke dashboard Midtrans, tambahkan kolom `midtransOrderId` ke
-  `TransactionEntity` (migrasi baru) dan alirkan `autoOrderId` dari `PosScreen.kt` ke
-  `CheckoutUseCase` sebagai pengembangan lanjutan.
+  checkout (`PosScreen.kt`, `autoOrderId`) adalah ID sementara (`TEMP-<timestamp>-<4 digit
+  acak>`), dibuat SEBELUM transaksi final tersimpan ke database (nomor invoice baru dibuat
+  setelah checkout selesai). Sudah dilindungi dari tebak-tebakan lintas-toko lewat `ownerUid`
+  di `firestore.rules`/`payment_status` (lihat "Riwayat audit" di bawah), tapi masih belum ada
+  kolom yang menyimpan tautan `order_id Midtrans <-> invoiceNumber` di `TransactionEntity` untuk
+  rekonsiliasi laporan keuangan lintas sistem. Cukup aman untuk konfirmasi status "Lunas"
+  real-time di kasir (yang sudah berfungsi penuh), tapi kalau butuh rekonsiliasi akuntansi
+  formal ke dashboard Midtrans, tambahkan kolom `midtransOrderId` ke `TransactionEntity`
+  (migrasi baru) dan alirkan `autoOrderId` ke `CheckoutUseCase` sebagai pengembangan lanjutan.
 - `minSdk = 26` (Android 8.0+) karena Apache POI (export Excel) memakai
   `java.lang.invoke.MethodHandle` yang baru didukung mulai API 26.
 - Workflow CI menggunakan `gradle/actions/setup-gradle` dengan `gradle-version: '8.7'` (bukan
@@ -215,21 +246,41 @@ sama tidak diam-diam terulang di fitur baru:
 - `PaymentGatewayRepository` sempat memanggil Cloud Function kredensial gateway tanpa memastikan
   device sign-in ke Firebase Auth dulu — server sekarang mewajibkan `request.auth` terisi
   (`ensureSignedIn()` di client).
+- **`payment_status/{orderId}` bisa dibaca siapa saja yang menebak `orderId`** (formatnya dulu
+  `TEMP-<timestamp_ms>` polos, sign-in juga anonim setara tanpa kepemilikan) — potensi kebocoran
+  info nominal+status transaksi QRIS ke toko lain lewat tebak-tebakan order_id dalam jendela
+  waktu checkout. Diperbaiki dua lapis: (a) `autoOrderId` di `PosScreen.kt` sekarang menambah 4
+  digit acak, (b) `firestore.rules`/`createQrisCharge` sekarang mencocokkan `ownerUid` — device
+  lain sama sekali tidak bisa membaca dokumen `payment_status` toko lain walau order_id-nya
+  berhasil ditebak persis.
+- **Dokumentasi lisensi ketinggalan zaman**: `LICENSING_SETUP.md` & satu entri `CHANGELOG.md`
+  masih mendeskripsikan desain lisensi LAMA (token valid 30 hari + masa tenggang 14 hari) yang
+  sudah lama digantikan model sekali-bayar tanpa kedaluwarsa (lihat bagian "Model Lisensi" di
+  atas) — bisa menyesatkan developer yang membaca panduan setup. Sudah disamakan dengan
+  perilaku kode & bagian ini.
+- **Tombol "Import Produk Massal dari Excel/CSV" tidak berfungsi**: fiturnya (parser CSV, use
+  case, layar pratinjau) sudah lengkap dibangun, tapi rute navigasinya tidak pernah didaftarkan
+  di `MainActivity.kt` — `onOpenImport` di `ProductScreen` memakai default kosong `{}` karena
+  tidak pernah diisi. Sudah ditambahkan rute `"product_import"` (digerbang permission yang sama
+  dengan Manajemen Produk).
+- **Layar Kasir tidak dinamis di layar landscape/tablet**: rasio panel grid produk:keranjang &
+  ukuran kartu produk di-hardcode untuk satu ukuran layar saja — di HP portrait sempit cuma
+  muat 1 kolom produk, dan navigation bar 3-tombol yang pindah ke sisi layar saat landscape
+  menutupi produk/keranjang paling ujung karena `Scaffold` tidak diberi `contentWindowInsets`.
+  Diperbaiki dengan `BoxWithConstraints` (3 kelas lebar layar mengikuti breakpoint Material:
+  compact/medium/expanded) + `WindowInsets.safeDrawing` eksplisit; header juga bisa disembunyikan
+  manual di landscape untuk ruang vertikal lebih lega.
 
 ### Temuan yang BELUM diperbaiki (rekomendasi untuk iterasi berikutnya)
 
-- `payment_status/{orderId}` di `firestore.rules` bisa dibaca siapa saja yang menebak `orderId`
-  (formatnya `TEMP-<timestamp_ms>`, cukup sulit ditebak tapi bukan mustahil dalam jendela waktu
-  checkout) — potensi kebocoran info nominal+status transaksi ke pihak luar, bukan risiko uang
-  hilang. Perbaikan: tambahkan komponen acak ke order ID, atau batasi read ke `ownerUid` yang
-  cocok.
 - Iterasi PBKDF2 untuk enkripsi backup (`BackupCrypto`, 120.000) sedikit di bawah rekomendasi
   OWASP terbaru (210.000+) — masih aman untuk saat ini, bisa dinaikkan di migrasi berikutnya.
 - Belum ada kolom `midtransOrderId` di `TransactionEntity` untuk rekonsiliasi akuntansi formal
-  QRIS Otomatis ke dashboard Midtrans (lihat catatan "QRIS Otomatis — keterbatasan" di bawah).
-- Zero test coverage untuk `data/repository/`, `CloudSyncRepository`, dan sebagian besar
-  ViewModel — hanya `Permission.kt`, `CheckoutValidator`, `Cart`, `BackupCrypto`, dan
-  `QrisUtil` yang punya unit test saat ini.
+  QRIS Otomatis ke dashboard Midtrans (lihat catatan "QRIS Otomatis — keterbatasan" di atas).
+- Zero test coverage untuk `data/repository/`, `CloudSyncRepository`, `PromoEngine`,
+  `ProductImportUseCase`, dan sebagian besar ViewModel — hanya `Permission.kt`,
+  `CheckoutValidator`, `Cart`, `BackupCrypto`, `QrisUtil`, dan `DiscountPolicy` yang punya unit
+  test saat ini.
 
 ## Saran fitur — supaya beda jauh dari kompetitor (Moka, Pawoon, Qasir, dll.)
 
