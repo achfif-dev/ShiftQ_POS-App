@@ -1,6 +1,6 @@
 /**
  * Jalankan SEKALI SAJA oleh developer sebelum rilis pertama:
- *   cd functions && npm install && node scripts-src-not-used-here
+ *   cd functions && npm install && node scripts/generate-license-keypair.js
  *
  * CARA PAKAI:
  *   node scripts/generate-license-keypair.js
